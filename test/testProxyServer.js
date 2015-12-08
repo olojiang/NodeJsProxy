@@ -6,4 +6,4 @@
 require('../js/process/uncaughtException').init(process);
 
 var proxyServer = require('../js/http/proxyServer');
-proxyServer.start(37777);
+proxyServer.start(process.env.NP_REMOTE_PORT||37777);

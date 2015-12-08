@@ -1,2 +1,2 @@
-cd /opt/nodejsdemo
+cd /opt/nodejsproxy
 tail -f testProxyServer.log
