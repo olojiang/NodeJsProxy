@@ -1,6 +1,7 @@
 ##HTTP && HTTPs Proxy Written in Node.js
-There are 2 types of usage from this project:
-
+There are 2 types of usage from this project:<br />
+1. Start http&&https proxy on remote server, and use local browser to use it directly (This method has some issue with GWF, so is not recommended)
+2. Start remote server, start local server, use browser or other application to connect to local server (Recommend).
 
 #### Usage Pre-request
 1. Has node.js installed.<br>
@@ -14,7 +15,7 @@ There are 2 types of usage from this project:
         cd /path_to/nodejsproxy/test/
         node testProxyServer.js<br>
 ##### On local machine, start the client.
-        /path_to/nodejsproxy/test/
+        cd /path_to/nodejsproxy/test/
         node testProxyClient.js
 ##### Point any other application, like browser, etc to use local proxy client.
 
