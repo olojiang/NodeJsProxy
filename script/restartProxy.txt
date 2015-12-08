@@ -1,0 +1,4 @@
+ps -ef | grep "node testHttpProxy.js" | head -n 1 | awk '{print $2}' | xargs kill -9
+ps -ef | grep node
+cd /opt/nodejsdemo/test/
+nohup node testHttpProxy.js 2>../testHttpProxy.err 1>../testHttpProxy.log &
