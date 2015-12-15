@@ -10,7 +10,7 @@ var net = require('net');
 var fs = require('fs');
 
 var error = true;
-var debugging = true;
+var debugging = false;
 var detail = false;
 
 var proxyServerUrl = null;
@@ -101,7 +101,7 @@ function httpHandler( userRequest, userResponse ) {
         'data',
         function ( chunk ) {
             if ( debugging ) {
-                console.log( '    < [%d]TCP From Target, length=%d, %j', reqNum, chunk.length, path );
+                console.log( '    < [%d] TCP From Target, length=%d, %j', reqNum, chunk.length, path );
             }
 
             if( proxySocket.noDataYet ) {
