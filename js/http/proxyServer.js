@@ -5,141 +5,218 @@
 var net = require('net');
 var http = require('http');
 
-var error = true;
-var debugging = true;
+var requestHttpTarget = require('./proxyServerHttp').requestHttpTarget;
+var requestHttpsTarget = require('./proxyServerHttps').requestHttpsTarget;
+var getReqNumFunc = require('../numberUtil').getReqNumFunc();
+
+var errorLevel = true;
+var info = true;
+var debugging = false;
 var detail = false;
 
-/**
- * Request HTTPs target
- * - by creating tcp connection and sending chunk
- * @param socketRequest
- * @param url
- * @param port
- * @param httpVersion
- * @returns {exports.Socket}
- */
-function requestHttpsTarget(socketRequest, url, port, httpVersion){
-    // Set up TCP connection to target server
-    var proxySocket = new net.Socket();
-    proxySocket.connect(
-        parseInt( port ), url,
-        function () {
-            if ( debugging ) {
-                console.log( '  - HTTPs Connected to %s/%s', url, port );
-            }
-        }
-    );
+var startIdentifier = "}";
 
-    var path = url+":"+port;
+var buf = {};
+var bufferInput = {};
+var isHttpEnded = {};
+var handledHeadInfo = {};
+var index = {};
+var leftDataToTargetServer = {};
+var targetSocket = {};
 
-    // Pass target server's response back to caller
-    proxySocket.on(
-        'data',
-        function ( chunk ) {
-            if ( debugging ) {
-                console.log( '    < HTTPs From Target, length=%d, %s', chunk.length, path );
-            }
+var clientConn = 0;
 
-            // Return the data back to caller
-            socketRequest.write( chunk );
-        }
-    );
-
-    // Reading from target server error
-    proxySocket.on(
-        'error',
-        function ( err ) {
-            socketRequest.write( "HTTP/" + httpVersion + " 500 Connection error\r\n\r\n" );
-            if ( error ) {
-                console.error( '    < HTTPs From Target, ERR: %j, %j, ', err, path );
-            }
-            socketRequest.end();
-        }
-    );
-
-    // End of passing target server's response back to caller
-    proxySocket.on(
-        'end',
-        function () {
-            if ( debugging ) {
-                console.log( '    < HTTPs From Target, END, %s', path );
-            }
-
-            socketRequest.end();
-        }
-    );
-
-    return proxySocket;
+function reclaimMemory(seqNum) {
+    delete buf[seqNum];
+    delete isHttpEnded[seqNum];
+    delete bufferInput[seqNum];
+    delete handledHeadInfo[seqNum];
+    delete index[seqNum];
+    delete leftDataToTargetServer[seqNum];
+    delete targetSocket[seqNum];
 }
 
 /**
- * Request HTTP target
+ * Close client socket
+ * - From, client closed, need to close target socket
+ * - From, client error, need to close target socket
+ * - Target Socket, close
+ * - Target Socket, end
  * @param socket
- * @param path
- * @param options
- * @returns {*}
+ * @param seqNum
+ * @param remoteAddress
+ * @param error
  */
-function requestHttpTarget(socket, path, options) {
-    console.info("== Http Request to: %j", path);
+function closeClientSocket(socket, seqNum, remoteAddress, error) {
+    // Mark client socket has ended
+    socket.isClosed = true;
 
-    // Http request
-    return http.request(
-        options,
-        function (proxyResponse) {
-            if (detail) {
-                console.log('  < HTTP response from target server %s, statusCode: %d, headers: %s', path, proxyResponse.statusCode, JSON.stringify(proxyResponse.headers, null, 2));
-            } else {
-                console.log('  < HTTP response from target server %s, statusCode: %d', path, proxyResponse.statusCode);
-            }
-            var statusCode = proxyResponse.statusCode;
-            if (error && statusCode === 400 || statusCode === 500) {
-                console.error('  < HTTP response from target server %s, statusCode: %d', path, proxyResponse.statusCode);
-            } else if (debugging) {
-                console.log('  < HTTP response from target server %s, statusCode: %d', path, proxyResponse.statusCode);
-            }
+    var targetSocketX = targetSocket[seqNum]||socket.targetSocket;
+    if (targetSocketX) {
 
-            // Write header and status out first
-            socket.write(new Buffer(JSON.stringify({
-                statusCode: proxyResponse.statusCode,
-                headers: proxyResponse.headers
-            })).toString('base64')+"}");
+        clientConn--;
 
-            proxyResponse.on(
-                'data',
-                function (chunk) {
-                    if (debugging) {
-                        console.log('  < HTTP response from target server %s, length=%d', path, chunk.length);
-                    }
-                    socket.write(chunk);
-                }
-            );
+        reclaimMemory(seqNum);
 
-            proxyResponse.on(
-                'end',
-                function () {
-                    if (debugging) {
-                        console.log('  < HTTP response from target server %s, END', path);
-                    }
-                    socket.end();
-                }
-            );
+        if(!targetSocketX.isEnded) {
+            targetSocketX.end();
+
+            //delete socket.targetSocket;
         }
-    );
+    }
+
+    var log = error?console.error:console.log;
+
+    if (info) {
+        log("  [%d] [Proxy Client] ["+(error?"ERROR":"END")+"], FROM %s, [CONN]: %d"+(error?', Error: %j':''), seqNum, remoteAddress, clientConn, error?error:'');
+    }
+}
+
+/**
+ * On client socket data
+ * - If Http, use http to request the data
+ * - If Https, try to forward the request
+ * @param seqNum
+ * @param remoteAddress
+ * @param socket
+ * @param chunk
+ */
+function onClientSocketData(seqNum, remoteAddress, socket, chunk){
+    var chunkString = chunk.toString();
+
+    if( !handledHeadInfo[seqNum] ) {
+        // Only when we identified key words we will consider the header part is identified.
+        var ourDataIndex = chunkString.indexOf(startIdentifier);
+        if(ourDataIndex>-1) {
+            // Change status
+            handledHeadInfo[seqNum] = true;
+
+            var jsonString = bufferInput[seqNum] + chunkString.substring(0, ourDataIndex);
+
+            // Use base64 to decode the header part of the request.
+            var header = new Buffer(jsonString, 'base64').toString();
+
+            try {
+                //console.info("[Proxy Client], will parse %j", header);
+                var obj = JSON.parse(header);
+                //console.info("[Proxy Client], will handle %j", obj);
+                socket.target = obj;
+
+                leftDataToTargetServer[seqNum]= '';
+
+                if(obj.type === "https") {
+                    // Get target
+                    /*
+                     {
+                     host: targetHost,
+                     port: targetPort,
+                     httpVersion: httpVersion,
+                     type: "https"
+                     }
+                     */
+
+                    // Connect to target Https server and get things
+                    targetSocket[seqNum] = requestHttpsTarget(seqNum, socket, obj.host, obj.port, obj.httpVersion);
+                    socket.targetSocket = targetSocket[seqNum];
+
+                    leftDataToTargetServer[seqNum] = chunkString.substring(ourDataIndex+1);
+                    targetSocket[seqNum].write(leftDataToTargetServer[seqNum]);
+
+                } else {
+                    // Get target
+                    /*
+                     {
+                     path: path,
+                     options: options,
+                     type: "http"
+                     }
+                     */
+                    // Connect to target Http server and get things
+                    // Send request to target server
+                    var path = obj.path;
+                    var options = obj.options;
+                    targetSocket[seqNum] = requestHttpTarget(seqNum, socket, path, options);
+                    socket.targetSocket = targetSocket[seqNum];
+
+                    leftDataToTargetServer[seqNum] = chunkString.substring(ourDataIndex+1);
+
+                    // Find the end for HTTP as the extra string
+                    if( (index[seqNum] = leftDataToTargetServer[seqNum].indexOf("!!!END!!!")) !== -1 ) {
+                        leftDataToTargetServer[seqNum] = leftDataToTargetServer[seqNum].substring(0, index[seqNum]);
+                    }
+
+                    // Write some of the body data
+                    if(leftDataToTargetServer[seqNum].length>0) {
+                        if(detail){
+                            console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, leftDataToTargetServer[seqNum].length);
+                        }
+                        targetSocket[seqNum].write(leftDataToTargetServer[seqNum]);
+                    }
+
+                    // Should end it immediately
+                    if(index[seqNum] !== -1 ) {
+                        targetSocket[seqNum].end();
+                    }
+                }
+
+                // If there are some data in buffer
+                // - When connection to target is not established, but the data arrived case
+                if(buf[seqNum].length>0) {
+                    if(detail){
+                        console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, buf[seqNum].length);
+                    }
+                    targetSocket[seqNum].write(buf[seqNum]);
+                    buf[seqNum] = new Buffer(0);
+                }
+
+                // Http is ended find
+                // - When connection to target is not established, but the data arrived to say the game ended
+                if(isHttpEnded[seqNum]) {
+                    targetSocket[seqNum].end();
+                }
+            } catch(e) {
+                console.trace(e);
+            }
+        } else {
+            // There is the content from client, but there is no } within the input, which means the input may be longer, and the algorithm doesn't work.
+            console.error("  [%d] [Proxy Client] [%s], Can't find '}': %s", seqNum, remoteAddress, chunkString);
+            bufferInput[seqNum] += chunkString;
+        }
+    } else {
+        if( (index[seqNum] = chunkString.indexOf("!!!END!!!")) !== -1) {
+            chunk = new Buffer(chunkString.substring(0, index[seqNum]));
+
+            // Close the targetSocket[seqNum] after write all, HTTP Case
+            if(targetSocket[seqNum]) {
+                targetSocket[seqNum].end();
+            } else {
+                isHttpEnded[seqNum] = true;
+            }
+        }
+
+        if(targetSocket[seqNum]) {
+            if(chunk.length>0) {
+                if(detail){
+                    console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, chunk.length);
+                }
+                targetSocket[seqNum].write(chunk);
+            }
+        } else {
+            buf[seqNum] = Buffer.concat([buf[seqNum], chunk]);
+        }
+    }
 }
 
 /**
  * On client socket error
  * - Target connection should end
  * @param socket
+ * @param seqNum
  * @param remoteAddress
- * @param targetSocket
  */
-function onClientSocketError(socket, remoteAddress, targetSocket) {
+function onClientSocketError(socket, seqNum, remoteAddress) {
     socket.on('error', function (error) {
-        console.error("[Client Socket] FROM %s TO %j, error: %j", remoteAddress, socket.target, error);
-        if (targetSocket) {
-            targetSocket.end();
-        }
+        closeClientSocket(socket, seqNum, remoteAddress, error);
     });
 }
 
@@ -147,15 +224,12 @@ function onClientSocketError(socket, remoteAddress, targetSocket) {
  * On client socket end
  * - Target connection should end
  * @param socket
+ * @param seqNum
  * @param remoteAddress
- * @param targetSocket
  */
-function onClientSocketEnd(socket, remoteAddress, targetSocket) {
+function onClientSocketEnd(socket, seqNum, remoteAddress) {
     socket.on('end', function () {
-        console.info("[Client Socket] closed, FROM %s", remoteAddress);
-        if (targetSocket) {
-            targetSocket.end();
-        }
+        closeClientSocket(socket, seqNum, remoteAddress);
     });
 }
 
@@ -163,147 +237,30 @@ function onClientSocketEnd(socket, remoteAddress, targetSocket) {
  * After TCP connection accessed this server
  * @param socket
  */
-function connectionHandler(socket){
+function onClientSocketConnection(socket){
+    var seqNum = getReqNumFunc();
+
     var remoteAddress = socket.remoteAddress;
-    console.log('[Proxy TCP Server] Get a new connection [%s]', remoteAddress);
 
-    var handledHeadInfo = false; // Indicate if the head info has been handled
-    var targetSocket = null;
-    var index = -1;
-    var buf = new Buffer(''); // Buffer for client input for output to target HTTP/HTTPs server
-    var isHttpEnded = false; // Is the client HTTP request ended.
-    var bufferInput = ''; // If the key value doesn't identified by the value, we need to wait for the value.
+    clientConn++;
 
-    var startIdentifier = "}";
+    if(info) {
+        console.log('[%d] [Proxy Client] [New connection] [%s]', seqNum, remoteAddress);
+    }
 
-    socket.on('data', function(chunk){
-        var chunkString = chunk.toString();
-        console.info("[Client Socket] [%s], data: length=%s", remoteAddress, chunkString.length);
-        if( !handledHeadInfo ) {
-            // Only when we identified key words we will consider the header part is identified.
-            var ourDataIndex = chunkString.indexOf("}");
-            if(ourDataIndex>-1) {
-                // Change status
-                handledHeadInfo = true;
+    targetSocket[seqNum] = null;
 
-                var jsonString = bufferInput + chunkString.substring(0, ourDataIndex);
+    handledHeadInfo[seqNum] = false; // Indicate if the head info has been handled
+    index[seqNum] = -1;
+    buf[seqNum] = new Buffer(''); // Buffer for client input for output to target HTTP/HTTPs server
+    isHttpEnded[seqNum] = false; // Is the client HTTP request ended.
+    bufferInput[seqNum]= ''; // If the key value doesn't identified by the value, we need to wait for the value.
 
-                // Use base64 to decode the header part of the request.
-                var header = new Buffer(jsonString, 'base64').toString();
+    socket.on('data',
+        onClientSocketData.bind(null, seqNum, remoteAddress, socket));
 
-                try {
-                    //console.info("[Client Socket], will parse %j", header);
-                    var obj = JSON.parse(header);
-                    //console.info("[Client Socket], will handle %j", obj);
-                    socket.target = obj;
-
-                    var leftDataToTargetServer = '';
-
-                    if(obj.type === "https") {
-                        // Get target
-                        /*
-                         {
-                         host: targetHost,
-                         port: targetPort,
-                         httpVersion: httpVersion,
-                         type: "https"
-                         }
-                         */
-
-                        // Connect to target Https server and get things
-                        targetSocket = requestHttpsTarget(socket, obj.host, obj.port, obj.httpVersion);
-
-                        leftDataToTargetServer = chunkString.substring(ourDataIndex+1);
-                        targetSocket.write(leftDataToTargetServer);
-                    } else {
-                        // Get target
-                        /*
-                         {
-                         path: path,
-                         options: options,
-                         type: "http"
-                         }
-                         */
-                        // Connect to target Http server and get things
-                        // Send request to target server
-                        var path = obj.path;
-                        var options = obj.options;
-                        targetSocket = requestHttpTarget(socket, path, options);
-
-                        // Request to target server error, back the error to caller
-                        targetSocket.on(
-                            'error',
-                            function ( error ) {
-                                if ( error ) {
-                                    console.error( '  < HTTP request for target server %s, ERROR=', path, error );
-                                }
-                                socket.end();
-                            }
-                        );
-
-                        leftDataToTargetServer = chunkString.substring(ourDataIndex+1);
-
-                        // Find the end for HTTP as the extra string
-                        if( (index = leftDataToTargetServer.indexOf("!!!END!!!")) !== -1 ) {
-                            leftDataToTargetServer = leftDataToTargetServer.substring(0, index);
-                        }
-
-                        // Write some of the body data
-                        if(leftDataToTargetServer.length>0) {
-                            targetSocket.write(leftDataToTargetServer);
-                        }
-
-                        // Should ed it immediately
-                        if(index !== -1 ) {
-                            targetSocket.end();
-                        }
-                    }
-
-                    // If there are some data in buffer
-                    // - When connection to target is not established, but the data arrived case
-                    if(buf.length>0) {
-                        targetSocket.write(buf);
-                        buf = new Buffer(0);
-                    }
-
-                    // Http is ended find
-                    // - When connection to target is not established, but the data arrived to say the game ended
-                    if(isHttpEnded) {
-                        targetSocket.end();
-                    }
-                } catch(e) {
-                    console.trace(e);
-                }
-            } else {
-                // There is the content from client, but there is no } within the input, which means the input may be longer, and the algorithm doesn't work.
-                console.error("[Client Socket] [%s], Can't find '}': %s", remoteAddress, chunkString);
-                bufferInput += chunkString;
-            }
-        } else {
-            if( (index = chunkString.indexOf("!!!END!!!")) !== -1) {
-                chunk = new Buffer(chunkString.substring(0, index));
-
-                // Close the targetSocket after write all, HTTP Case
-                if(targetSocket) {
-                    targetSocket.end();
-                } else {
-                    isHttpEnded = true;
-                }
-            }
-
-            if(targetSocket) {
-                if(chunk.length>0) {
-                    console.info("[Client Socket], On more data, to Target server: length=%d", chunk.length);
-                    targetSocket.write(chunk);
-                }
-            } else {
-                buf = Buffer.concat([buf, chunk]);
-            }
-        }
-    });
-
-    onClientSocketError(socket, remoteAddress, targetSocket);
-    onClientSocketEnd(socket, remoteAddress, targetSocket);
+    onClientSocketError(socket, seqNum, remoteAddress);
+    onClientSocketEnd(socket, seqNum, remoteAddress);
 }
 
 /**
@@ -312,7 +269,7 @@ function connectionHandler(socket){
  */
 var simpleServer = require('../net/simpleServer');
 function startTcpServer(port){
-    simpleServer.listen(port, connectionHandler);
+    simpleServer.listen(port, onClientSocketConnection);
 }
 
 exports.start = startTcpServer;
