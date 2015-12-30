@@ -24,8 +24,7 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
         proxySocket.isError = true;
     }
 
-    if(dataSize[seqNum]!==undefined) {
-        connNum--;
+    if(typeof dataSize[seqNum]!=="undefined" && dataSize[seqNum] !== null && dataSize[seqNum] !== "") {
 
         if(!socketRequest.isClosed) {
             if(error) {
@@ -36,6 +35,8 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
         }
     }
 
+    connNum--;
+
     var log = error?console.error:console.log;
 
     if (info) {
@@ -43,6 +44,31 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
     }
 
     claimMemory(seqNum);
+}
+
+function onData(seqNum, chunk, path, socketRequest, proxySocket) {
+    if (debugging) {
+        console.log('    < [%d] [HTTPs] [Data], length=%d, %s', seqNum, chunk.length, path);
+    }
+
+    dataSize[seqNum] += chunk.length;
+
+    // Return the data back to caller, only when it's not closed
+    if (!socketRequest.isClosed) {
+        socketRequest.write(chunk);
+    } else {
+        proxySocket.end();
+    }
+}
+
+function onConnected(seqNum, url, port, proxySocket, extraString) {
+    if (info) {
+        console.log('    - [%d] [HTTPs] [Connected] %s/%s', seqNum, url, port);
+    }
+
+    if(extraString && extraString.length>0) {
+        proxySocket.write(extraString);
+    }
 }
 /**
  * Request HTTPs target
@@ -54,7 +80,7 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
  * @param httpVersion
  * @returns {exports.Socket}
  */
-function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion){
+function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extraString){
     dataSize[seqNum] = 0;
 
     // Set up TCP connection to target server
@@ -69,9 +95,7 @@ function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion){
     proxySocket.connect(
         parseInt( port ), url,
         function () {
-            if ( info ) {
-                console.log( '    - [%d] [HTTPs] [Connected] %s/%s', seqNum, url, port );
-            }
+            onConnected(seqNum, url, port, proxySocket, extraString);
         }
     );
 
@@ -81,18 +105,7 @@ function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion){
     proxySocket.on(
         'data',
         function ( chunk ) {
-            if ( debugging ) {
-                console.log( '    < [%d] [HTTPs] [Data], length=%d, %s', seqNum, chunk.length, path );
-            }
-
-            dataSize[seqNum] += chunk.length;
-
-            // Return the data back to caller, only when it's not closed
-            if(!socketRequest.isClosed) {
-                socketRequest.write( chunk );
-            } else {
-                proxySocket.close();
-            }
+            onData(seqNum, chunk, path, socketRequest, proxySocket);
         }
     );
 

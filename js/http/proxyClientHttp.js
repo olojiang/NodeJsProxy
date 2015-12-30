@@ -23,6 +23,10 @@ var info = true;
 var debugging = false;
 var detail = false;
 
+function claimMemory(reqNum) {
+    delete buf[reqNum];
+}
+
 function onProxyServerConnected(reqNum, proxyServerUrl, proxyServerPort, options, path, proxySocket) {
     if ( info ) {
         console.log( '   - [%d] [HTTP] Connected to %s:%s / %s, [CONN] %d', reqNum, proxyServerUrl, proxyServerPort, path, aliveConn );
@@ -117,9 +121,6 @@ function onProxyServerError( reqNum, path, httpVersion, userResponse, err ) {
     }
 }
 
-function claimMemory(reqNum) {
-    delete buf[reqNum];
-}
 function onProxyServerEnd(reqNum, path, userResponse) {
     aliveConn--;
 

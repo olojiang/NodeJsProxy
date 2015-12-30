@@ -54,16 +54,15 @@ function closeClientSocket(socket, seqNum, remoteAddress, error) {
     var targetSocketX = targetSocket[seqNum]||socket.targetSocket;
     if (targetSocketX) {
 
-        clientConn--;
-
-        reclaimMemory(seqNum);
-
         if(!targetSocketX.isEnded) {
             targetSocketX.end();
 
             //delete socket.targetSocket;
         }
     }
+
+    reclaimMemory(seqNum);
+    clientConn--;
 
     var log = error?console.error:console.log;
 
@@ -115,12 +114,14 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                      }
                      */
 
-                    // Connect to target Https server and get things
-                    targetSocket[seqNum] = requestHttpsTarget(seqNum, socket, obj.host, obj.port, obj.httpVersion);
-                    socket.targetSocket = targetSocket[seqNum];
+                    //socket.end();
+                    //return;
 
-                    leftDataToTargetServer[seqNum] = chunkString.substring(ourDataIndex+1);
-                    targetSocket[seqNum].write(leftDataToTargetServer[seqNum]);
+                    var extraString = chunkString.substring(ourDataIndex+1);
+
+                    // Connect to target Https server and get things
+                    targetSocket[seqNum] = requestHttpsTarget(seqNum, socket, obj.host, obj.port, obj.httpVersion, extraString);
+                    socket.targetSocket = targetSocket[seqNum];
 
                 } else {
                     // Get target
@@ -179,7 +180,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
             }
         } else {
             // There is the content from client, but there is no } within the input, which means the input may be longer, and the algorithm doesn't work.
-            console.error("  [%d] [Proxy Client] [%s], Can't find '}': %s", seqNum, remoteAddress, chunkString);
+            console.error("  [%d] [Proxy Client] [%s], Can't find '}'", seqNum, remoteAddress);
             bufferInput[seqNum] += chunkString;
         }
     } else {
@@ -245,7 +246,7 @@ function onClientSocketConnection(socket){
     clientConn++;
 
     if(info) {
-        console.log('[%d] [Proxy Client] [New connection] [%s]', seqNum, remoteAddress);
+        console.log('[%d] [Proxy Client] [New connection] [%s] [CONN] %d', seqNum, remoteAddress, clientConn);
     }
 
     targetSocket[seqNum] = null;

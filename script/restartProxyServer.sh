@@ -19,7 +19,7 @@ cd /opt/nodejsproxy/test/
 #nohup node --debug testProxyServer.js 2>../testProxyServer.err 1>../testProxyServer.log &
 nohup node --debug testProxyServer.js >../testProxyServer.log &
 
-sleep .5
+sleep 1.5
 echo ''
 echo 'After Start'
 pgrep -fl '^node --debug testProxyServer.js'
