@@ -17,7 +17,8 @@ function claimMemory(seqNum) {
     delete dataSize[seqNum];
 }
 
-function closeByError(seqNum, path, error, socket) {
+function closeByError(seqNum, path, error, socket, httpRequest) {
+    httpRequest.isClosed = true;
     connNum--;
 
     if (errorLevel) {
@@ -30,7 +31,8 @@ function closeByError(seqNum, path, error, socket) {
 
     claimMemory(seqNum);
 }
-function closeByEnd(seqNum, path, socket) {
+function closeByEnd(seqNum, path, socket, httpRequest) {
+    httpRequest.isClosed = true;
     connNum--;
 
     if (info) {
@@ -100,14 +102,14 @@ function requestHttpTarget(seqNum, socket, path, options) {
             proxyResponse.on(
                 'end',
                 function () {
-                    closeByEnd(seqNum, path, socket);
+                    closeByEnd(seqNum, path, socket, httpRequest);
                 }
             );
 
             proxyResponse.on(
                 'error',
                 function (error) {
-                    closeByError(seqNum, path, error, socket);
+                    closeByError(seqNum, path, error, socket, httpRequest);
                 }
             );
         }
@@ -120,6 +122,8 @@ function requestHttpTarget(seqNum, socket, path, options) {
             closeByError(seqNum, path, error, socket);
         }
     );
+
+    socket.targetSocket = httpRequest;
 
     return httpRequest;
 }

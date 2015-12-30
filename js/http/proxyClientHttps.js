@@ -17,12 +17,13 @@ var info = true; // Proxy connection start and end
 var debugging = false;
 var detail = false;
 
-var aliveConn = 0;
+var proxyConn = 0;
+var browserConn = 0;
 
 function onProxyServerConnected(reqNum, targetHost, targetPort, httpVersion, bodyHead, url, socketRequest, proxySocket) {
 
-    if ( info ) {
-        console.log( '  - [%d] [HTTPs] request to %s/%s, [CONN]: %d', reqNum, targetHost, targetPort, aliveConn);
+    if ( debugging ) {
+        console.log( '  - [%d] [HTTPs] [Connected] %s/%s, [CONN]: %d', reqNum, targetHost, targetPort, proxyConn);
     }
 
     // Init size map
@@ -48,7 +49,7 @@ function onProxyServerConnected(reqNum, targetHost, targetPort, httpVersion, bod
     }
 }
 
-function onProxyServerData( reqNum, url, socketRequest, chunk ) {
+function onProxyServerData( reqNum, url, socketRequest, proxySocket, chunk ) {
     if ( debugging ) {
         console.log( '    < [%d] HTTPs From Proxy Server, length=%d, %s', reqNum, chunk.length, url );
     }
@@ -56,28 +57,40 @@ function onProxyServerData( reqNum, url, socketRequest, chunk ) {
     sizeResponseMap[reqNum] = sizeResponseMap[reqNum] + chunk.length;
 
     // Return the data back to Browser
-    socketRequest.write( chunk );
+    if(!socketRequest.isClosed) {
+        socketRequest.write(chunk);
+    } else {
+        proxySocket.end();
+    }
 }
 
-function onProxyServerError( reqNum, url, httpVersion, socketRequest, err ) {
-    socketRequest.write( "HTTPs/" + httpVersion + " 500 Connection error\r\n\r\n" );
+function onProxyServerError( reqNum, url, httpVersion, socketRequest, proxySocket, err ) {
+    proxySocket.isClosed = true;
 
-    aliveConn--;
+    proxyConn--;
 
     if ( errorLevel ) {
-        console.error( '    < [%d] HTTPs From Proxy Server, ERR: %s, %s, [CONN]: %d', reqNum, err, url, aliveConn );
+        console.error( '    < [%d] HTTPs From Proxy Server, ERR: %s, %s, [CONN]: %d', reqNum, err, url, proxyConn );
     }
-    socketRequest.end();
+
+    if(!socketRequest.isClosed) {
+        socketRequest.write( "HTTPs/" + httpVersion + " 500 Connection error\r\n\r\n" );
+        socketRequest.end();
+    }
 }
 
-function onProxyServerEnd( reqNum, url, socketRequest ) {
-    aliveConn--;
+function onProxyServerEnd( reqNum, url, socketRequest, proxySocket ) {
+    proxySocket.isClosed = true;
+
+    proxyConn--;
 
     if (info) {
-        console.log('    < [%d] HTTPs From Proxy Server, END, %s, totalResponseSize: %d, [CONN]: %d', reqNum, url, sizeResponseMap[reqNum], aliveConn);
+        console.log('    < [%d] HTTPs From Proxy Server, END, %s, totalResponseSize: %d, [CONN]: %d', reqNum, url, sizeResponseMap[reqNum], proxyConn);
     }
 
-    socketRequest.end();
+    if(!socketRequest.isClosed) {
+        socketRequest.end();
+    }
 }
 
 function onBrowserData( reqNum, url, proxySocket, chunk ) {
@@ -85,22 +98,36 @@ function onBrowserData( reqNum, url, proxySocket, chunk ) {
         console.log( '    > [%d] HTTPs From Browser, %s, length=%d', reqNum, url, chunk.length );
     }
 
-    proxySocket.write( chunk );
+    if(!proxySocket.isClosed) {
+        proxySocket.write(chunk);
+    }
 }
 
-function onBrowserError( reqNum, url, proxySocket, err ) {
+function onBrowserError( reqNum, url, socketRequest, proxySocket, err ) {
+    socketRequest.isClosed = true;
+
+    browserConn--;
+
     if ( errorLevel ) {
-        console.error( '  > [%d] HTTPs From Browser, %s, ERR: %s', reqNum, url, err );
+        console.error( '    > [%d] HTTPs From Browser, %s, [CONN] %d [ERROR]: %s', reqNum, url, browserConn, err );
     }
-    proxySocket.end();
+
+    if(!proxySocket.isClosed) {
+        proxySocket.end();
+    }
 }
 
-function onBrowserEnd( reqNum, url, proxySocket ) {
+function onBrowserEnd( reqNum, url, socketRequest, proxySocket ) {
+    socketRequest.isClosed = true;
+    browserConn--;
+
     if ( info ) {
-        console.log( '    < [%d] HTTPs From Browser, %s, END', reqNum, url );
+        console.log( '    < [%d] HTTPs From Browser, %s, [CONN] %d [END]', reqNum, url, browserConn );
     }
 
-    proxySocket.end();
+    if(!proxySocket.isClosed) {
+        proxySocket.end();
+    }
 }
 
 /**
@@ -115,7 +142,8 @@ function onBrowserEnd( reqNum, url, proxySocket ) {
 function httpsHandler( getReqNum, proxyServerUrl, proxyServerPort, request, socketRequest, bodyHead ) {
     var reqNum = getReqNum();
 
-    aliveConn++;
+    proxyConn++;
+    browserConn++;
 
     var url = request.url;
     var httpVersion = request.httpVersion;
@@ -124,8 +152,8 @@ function httpsHandler( getReqNum, proxyServerUrl, proxyServerPort, request, sock
     var targetHost = hostInfo[0];
     var targetPort = hostInfo[1];
 
-    if ( debugging ) {
-        console.log( ' = Will connect to %s:%s', proxyServerUrl, proxyServerPort );
+    if ( info ) {
+        console.log( ' = [%d] [HTTPs] [Request] %s/%s, [CONN]: %d', reqNum, proxyServerUrl, proxyServerPort, proxyConn );
     }
 
     // Set up TCP connection to Proxy server
@@ -142,19 +170,19 @@ function httpsHandler( getReqNum, proxyServerUrl, proxyServerPort, request, sock
     // Pass Proxy server's response back to Browser
     proxySocket.on(
         'data',
-        onProxyServerData.bind(null, reqNum, url, socketRequest)
+        onProxyServerData.bind(null, reqNum, url, socketRequest, proxySocket)
     );
 
     // Reading from Proxy server error
     proxySocket.on(
         'error',
-        onProxyServerError.bind(null, reqNum, url, httpVersion, socketRequest)
+        onProxyServerError.bind(null, reqNum, url, httpVersion, socketRequest, proxySocket)
     );
 
     // End of passing Proxy server's response back to Browser
     proxySocket.on(
         'end',
-        onProxyServerEnd.bind(null, reqNum, url, socketRequest)
+        onProxyServerEnd.bind(null, reqNum, url, socketRequest, proxySocket)
     );
 
     //// Set TCP timeout
@@ -172,13 +200,13 @@ function httpsHandler( getReqNum, proxyServerUrl, proxyServerPort, request, sock
     // Reading from Browser error, and close the connection to Proxy server
     socketRequest.on(
         'error',
-        onBrowserError.bind(null, reqNum, url, proxySocket)
+        onBrowserError.bind(null, reqNum, url, socketRequest, proxySocket)
     );
 
     // End of passing Browser request to Proxy server
     socketRequest.on(
         'end',
-        onBrowserEnd.bind(null, reqNum, url, proxySocket)
+        onBrowserEnd.bind(null, reqNum, url, socketRequest, proxySocket)
     );
 }
 

@@ -14,7 +14,8 @@ var info = true;
 var debugging = false;
 var detail = false;
 
-var startIdentifier = "}";
+var HEADER_SEPARATOR = "}";
+var END_STRING = "!!!END!!!";
 
 var buf = {};
 var bufferInput = {};
@@ -54,7 +55,7 @@ function closeClientSocket(socket, seqNum, remoteAddress, error) {
     var targetSocketX = targetSocket[seqNum]||socket.targetSocket;
     if (targetSocketX) {
 
-        if(!targetSocketX.isEnded) {
+        if(!targetSocketX.isClosed) {
             targetSocketX.end();
 
             //delete socket.targetSocket;
@@ -85,7 +86,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
 
     if( !handledHeadInfo[seqNum] ) {
         // Only when we identified key words we will consider the header part is identified.
-        var ourDataIndex = chunkString.indexOf(startIdentifier);
+        var ourDataIndex = chunkString.indexOf(HEADER_SEPARATOR);
         if(ourDataIndex>-1) {
             // Change status
             handledHeadInfo[seqNum] = true;
@@ -121,7 +122,6 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
 
                     // Connect to target Https server and get things
                     targetSocket[seqNum] = requestHttpsTarget(seqNum, socket, obj.host, obj.port, obj.httpVersion, extraString);
-                    socket.targetSocket = targetSocket[seqNum];
 
                 } else {
                     // Get target
@@ -137,12 +137,11 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                     var path = obj.path;
                     var options = obj.options;
                     targetSocket[seqNum] = requestHttpTarget(seqNum, socket, path, options);
-                    socket.targetSocket = targetSocket[seqNum];
 
                     leftDataToTargetServer[seqNum] = chunkString.substring(ourDataIndex+1);
 
                     // Find the end for HTTP as the extra string
-                    if( (index[seqNum] = leftDataToTargetServer[seqNum].indexOf("!!!END!!!")) !== -1 ) {
+                    if( (index[seqNum] = leftDataToTargetServer[seqNum].indexOf(END_STRING)) !== -1 ) {
                         leftDataToTargetServer[seqNum] = leftDataToTargetServer[seqNum].substring(0, index[seqNum]);
                     }
 
@@ -184,7 +183,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
             bufferInput[seqNum] += chunkString;
         }
     } else {
-        if( (index[seqNum] = chunkString.indexOf("!!!END!!!")) !== -1) {
+        if( (index[seqNum] = chunkString.indexOf(END_STRING)) !== -1) {
             chunk = new Buffer(chunkString.substring(0, index[seqNum]));
 
             // Close the targetSocket[seqNum] after write all, HTTP Case
@@ -200,7 +199,19 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                 if(detail){
                     console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, chunk.length);
                 }
-                targetSocket[seqNum].write(chunk);
+
+                if (
+                    (socket.target.type === 'https' && targetSocket[seqNum].isConnected && !targetSocket[seqNum].isClosed) ||
+                    (socket.target.type === 'http' && !targetSocket[seqNum].isClosed)
+                ) {
+                    // If connected, then send request
+                    targetSocket[seqNum].write(chunk);
+                } else {
+                    // If https && not connected, then try to save it, and try to send the data, when socket connected
+                    buf[seqNum] = Buffer.concat([buf[seqNum], chunk]);
+                    targetSocket[seqNum].buf = Buffer.concat([buf[seqNum], targetSocket[seqNum].buf||new Buffer(0)]);
+                    buf[seqNum] = new Buffer(0);
+                }
             }
         } else {
             buf[seqNum] = Buffer.concat([buf[seqNum], chunk]);
