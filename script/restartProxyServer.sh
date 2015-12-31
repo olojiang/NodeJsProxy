@@ -17,7 +17,7 @@ echo ''
 echo 'Start'
 cd /opt/nodejsproxy/test/
 #nohup node --debug testProxyServer.js 2>../testProxyServer.err 1>../testProxyServer.log &
-nohup node --debug testProxyServer.js >../testProxyServer.log &
+nohup node testProxyServer.js >../testProxyServer.log 2>&1 &
 
 sleep .5
 echo ''
