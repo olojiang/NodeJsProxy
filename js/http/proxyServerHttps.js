@@ -12,7 +12,7 @@ var detail = false;
 
 var SOCKET_TIMEOUT = 10*1000;
 var MTALK_URL = "mtalk.google.com:5228"; // This used and re-connect again and again by chrome
-var MTALK_TIMEOUT = 10*60*1000;
+var MTALK_TIMEOUT = 5*60*1000;
 
 var connNum = 0;
 var dataSize = {};
@@ -24,6 +24,59 @@ function claimMemory(seqNum) {
     if(timeout[seqNum]) {
         clearTimeout(timeout[seqNum]);
         delete timeout[seqNum];
+    }
+}
+
+function onConnected(seqNum, url, port, socketRequest, proxySocket, extraString) {
+    proxySocket.isConnected = true;
+
+    if (info) {
+        console.log('    [%d] [HTTPs] [Connected] %s:%s', seqNum, url, port);
+    }
+
+    if (!socketRequest.isClosed) {
+        // If there are any data want to send while connection creating
+        if (extraString && extraString.length > 0) {
+            console.log('    [%d] [HTTPs] [Send Request] %s:%s, %d, %s', seqNum, url, port, extraString.length, extraString);
+            proxySocket.write(extraString);
+        }
+
+        // If there are any data want to send during the connection creating
+        if (proxySocket.buf && proxySocket.buf.length > 0) {
+            proxySocket.write(proxySocket.buf);
+            proxySocket.buf = new Buffer(0);
+        }
+    } else {
+        console.log('    - [%d] [HTTPs] [Connected] [Abort] %s:%s', seqNum, url, port);
+    }
+}
+
+function onData(seqNum, chunk, path, socketRequest, proxySocket) {
+    if (debugging) {
+        console.log('    < [%d] [HTTPs] [Data] %d, %s', seqNum, chunk.length, path);
+    }
+
+    dataSize[seqNum] += chunk.length;
+
+    // Return the data back to caller, only when it's not closed
+    if (!socketRequest.isClosed) {
+        socketRequest.write(chunk);
+
+        // Set timeout for the socket clear, after first onData, will try to make sure the server has some data back
+        if(timeout[seqNum]) {
+            clearTimeout(timeout[seqNum]);
+        }
+
+        timeout[seqNum] = setTimeout(function(){
+            proxySocket.end();
+
+            if(debugging) {
+                console.log('    < [%d] [HTTPs] [Timeout], %s', seqNum, path);
+            }
+
+        }, MTALK_URL===path?MTALK_TIMEOUT:SOCKET_TIMEOUT);
+    } else {
+        proxySocket.end();
     }
 }
 
@@ -56,49 +109,6 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
     claimMemory(seqNum);
 }
 
-function onData(seqNum, chunk, path, socketRequest, proxySocket) {
-    if (debugging) {
-        console.log('    < [%d] [HTTPs] [Data], length=%d, %s', seqNum, chunk.length, path);
-    }
-
-    dataSize[seqNum] += chunk.length;
-
-    // Return the data back to caller, only when it's not closed
-    if (!socketRequest.isClosed) {
-        socketRequest.write(chunk);
-
-        // Set timeout for the socket clear, after first onData, will try to make sure the server has some data back
-        if(timeout[seqNum]) {
-            clearTimeout(timeout[seqNum]);
-        }
-
-        timeout[seqNum] = setTimeout(function(){
-            proxySocket.end();
-            console.log('    < [%d] [HTTPs] [TIMEOUT], %s', seqNum, path);
-        }, MTALK_URL===path?MTALK_TIMEOUT:SOCKET_TIMEOUT);
-    } else {
-        proxySocket.end();
-    }
-}
-
-function onConnected(seqNum, url, port, proxySocket, extraString) {
-    proxySocket.isConnected = true;
-
-    if (info) {
-        console.log('    - [%d] [HTTPs] [Connected] %s/%s', seqNum, url, port);
-    }
-
-    // If there are any data want to send while connection creating
-    if(extraString && extraString.length>0) {
-        proxySocket.write(extraString);
-    }
-
-    // If there are any data want to send during the connection creating
-    if(proxySocket.buf && proxySocket.buf.length>0) {
-        proxySocket.write(proxySocket.buf);
-        proxySocket.buf = new Buffer(0);
-    }
-}
 /**
  * Request HTTPs target
  * - by creating tcp connection and sending chunk
@@ -118,13 +128,13 @@ function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extra
     connNum++;
 
     if(info) {
-        console.info("    = [%d] [HTTPs] [Request]: %s/%s, [CONN] %d", seqNum, url, port, connNum);
+        console.info("    = [%d] [HTTPs] [Request]: %s:%s, [CONN] %d", seqNum, url, port, connNum);
     }
 
     proxySocket.connect(
         parseInt( port ), url,
         function () {
-            onConnected(seqNum, url, port, proxySocket, extraString);
+            onConnected(seqNum, url, port, socketRequest, proxySocket, extraString);
         }
     );
 

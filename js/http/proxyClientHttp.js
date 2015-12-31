@@ -27,142 +27,11 @@ function claimMemory(reqNum) {
     delete buf[reqNum];
 }
 
-function onProxyServerConnected(reqNum, proxyServerUrl, proxyServerPort, options, path, proxySocket) {
-    if ( info ) {
-        console.log( '   - [%d] [HTTP] Connected to %s:%s / %s, [CONN] %d', reqNum, proxyServerUrl, proxyServerPort, path, aliveConn );
-    }
-
-    // Init size map
-    sizeResponseMap[reqNum] = 0;
-
-    // Tell the Browser the connection was successfully established
-    //userResponse.write( "HTTP/" + httpVersion + " 200 Connection established\r\n\r\n" );
-
-    // Tell proxy server the HTTP request Header, and path (HTTP)
-    proxySocket.write( new Buffer(JSON.stringify({
-            options: options,
-            path: path,
-            type: "http",
-            reqNum: reqNum
-        })).toString('base64') + "}");
-
-    tcpConnectionEstablished[reqNum] = true;
-    if( httpRequestEnd[reqNum] ) {
-        proxySocket.write( "!!!END!!!" );
-    }
-}
-
 function writeChunk(userResponse, chunk, reqNum) {
     userResponse.write(chunk);
 
     // Count actual body size
     sizeResponseMap[reqNum] += chunk.length + sizeResponseMap[reqNum];
-}
-function onProxyServerData( reqNum, path, userResponse, proxySocket, chunk ) {
-    if ( debugging ) {
-        console.log( '    < [%d] [HTTP] From Proxy, length=%d, %j', reqNum, chunk.length, path );
-    }
-
-    if( proxySocket.noDataYet ) {
-        var chunkString = chunk.toString();
-        var index = chunkString.indexOf("}");
-
-        var headerString = null;
-
-        if(index !== -1) {
-            proxySocket.noDataYet = false;
-            var headerChunkString = chunkString.substring(0, index);
-            //console.info("Before parse: index=%d, %s", index, buf[reqNum] + headerChunkString);
-            headerString = new Buffer(buf[reqNum] + headerChunkString, 'base64').toString();
-            //console.info("headerString=%s", headerString);
-            try {
-                // Status code and Header handling
-                var proxyResponse = JSON.parse(headerString);
-
-                // Send the header back
-                userResponse.writeHead(
-                    proxyResponse.statusCode,
-                    proxyResponse.headers
-                );
-
-                // Extra text output
-                chunk = chunk.slice(headerChunkString.length+1);
-                if(chunk.length!==0) {
-                    // Only write it when there are still something left after header part handled
-                    writeChunk(userResponse, chunk, reqNum);
-                }
-            } catch(e) {
-                console.error("JSON.parse(%j), Error, %j", headerString, e);
-            }
-        } else {
-            console.warn("* Proxy Server format warn, can't find '}', Warning: %j", chunkString);
-            buf[reqNum] += chunkString;
-        }
-    } else {
-        // Return the data back to Browser
-        writeChunk(userResponse, chunk, reqNum);
-    }
-}
-
-function onProxyServerError( reqNum, path, httpVersion, userResponse, err ) {
-
-    if(buf[reqNum]) {
-        aliveConn--;
-
-        userResponse.writeHead( 500 );
-        userResponse.write( "HTTPs/" + httpVersion + " 500 Connection error\r\n\r\n" );
-        userResponse.end();
-
-        claimMemory(reqNum);
-    }
-
-    if ( errorLevel ) {
-        console.error( '    < [%d] [HTTP] From Proxy, ERR: %j, %j, [CONN]: %d', reqNum, err, path, aliveConn );
-    }
-}
-
-function onProxyServerEnd(reqNum, path, userResponse) {
-    aliveConn--;
-
-    if ( info ) {
-        console.log( '    < [%d] [HTTP] From Proxy, [END], %j, totalResponseSize = %d, [CONN]: %d', reqNum, path, sizeResponseMap[reqNum], aliveConn );
-    }
-    userResponse.end();
-
-    claimMemory(reqNum);
-}
-
-function onBrowserData(reqNum, path, proxySocket, chunk) {
-    if ( debugging ) {
-        console.info( '  < [%d] [HTTP] request %s, from Browser, length=%d', reqNum, path, chunk.length );
-    }
-    proxySocket.write( chunk );
-}
-
-function onBrowserError(reqNum, path, proxySocket, error) {
-    if ( errorLevel ) {
-        console.info( '  < [%d] [HTTP] request %s, from Browser, ERROR, %j', reqNum, path, error );
-    }
-    proxySocket.end();
-}
-
-function onBrowserEnd(reqNum, path, proxySocket) {
-    if ( debugging ) {
-        console.info( '  < [%d] [HTTP] request %s, from Browser, [END]', reqNum, path );
-    }
-
-    httpRequestEnd[reqNum] = true;
-    if( tcpConnectionEstablished[reqNum] ) {
-        proxySocket.write( "!!!END!!!" );
-    }
-}
-
-function onBrowserClose(reqNum, path, proxySocket){
-    if ( debugging ) {
-        console.info('  < [%d] [HTTP] request %s, from Browser, CLOSE', reqNum, path);
-    }
-    httpRequestEnd[reqNum] = true;
-    proxySocket.end();
 }
 
 /**
@@ -178,7 +47,7 @@ function httpHandler( getReqNum, proxyServerUrl, proxyServerPort, userRequest, u
     var reqNum = getReqNum();
 
     if ( debugging ) {
-        console.log( '- [%d] [HTTP] request url: %s', reqNum, userRequest.url );
+        console.log( '  [%d] [HTTP] [Browser] [Request] url: %s', reqNum, userRequest.url );
     }
 
     var headers = userRequest.headers;
@@ -205,7 +74,7 @@ function httpHandler( getReqNum, proxyServerUrl, proxyServerPort, userRequest, u
     buf[reqNum] = '';
 
     if ( detail ) {
-        console.log( '  > [%d] [HTTP] request to Proxy server %s options: %s', reqNum, path, JSON.stringify( options, null, 2 ) );
+        console.log( '    [%d] [HTTP] [Proxy] [Request] to Proxy server %s options: %s', reqNum, path, JSON.stringify( options, null, 2 ) );
     }
 
     aliveConn++;
@@ -270,3 +139,135 @@ function httpHandler( getReqNum, proxyServerUrl, proxyServerPort, userRequest, u
 }
 
 exports.httpHandler = httpHandler;
+
+function onProxyServerConnected(reqNum, proxyServerUrl, proxyServerPort, options, path, proxySocket) {
+    if ( info ) {
+        console.log( '    [%d] [HTTP] [Proxy] [Connected] to %s:%s / %s, [CONN] %d', reqNum, proxyServerUrl, proxyServerPort, path, aliveConn );
+    }
+
+    // Init size map
+    sizeResponseMap[reqNum] = 0;
+
+    // Tell the Browser the connection was successfully established
+    //userResponse.write( "HTTP/" + httpVersion + " 200 Connection established\r\n\r\n" );
+
+    // Tell proxy server the HTTP request Header, and path (HTTP)
+    proxySocket.write( new Buffer(JSON.stringify({
+            options: options,
+            path: path,
+            type: "http",
+            reqNum: reqNum
+        })).toString('base64') + "}");
+
+    tcpConnectionEstablished[reqNum] = true;
+    if( httpRequestEnd[reqNum] ) {
+        proxySocket.write( "!!!END!!!" );
+    }
+}
+
+function onProxyServerData( reqNum, path, userResponse, proxySocket, chunk ) {
+    if ( debugging ) {
+        console.log( '    [%d] [HTTP] [Proxy], length=%d, %j', reqNum, chunk.length, path );
+    }
+
+    if( proxySocket.noDataYet ) {
+        var chunkString = chunk.toString();
+        var index = chunkString.indexOf("}");
+
+        var headerString = null;
+
+        if(index !== -1) {
+            proxySocket.noDataYet = false;
+            var headerChunkString = chunkString.substring(0, index);
+            //console.info("Before parse: index=%d, %s", index, buf[reqNum] + headerChunkString);
+            headerString = new Buffer(buf[reqNum] + headerChunkString, 'base64').toString();
+            //console.info("headerString=%s", headerString);
+            try {
+                // Status code and Header handling
+                var proxyResponse = JSON.parse(headerString);
+
+                // Send the header back
+                userResponse.writeHead(
+                    proxyResponse.statusCode,
+                    proxyResponse.headers
+                );
+
+                // Extra text output
+                chunk = chunk.slice(headerChunkString.length+1);
+                if(chunk.length!==0) {
+                    // Only write it when there are still something left after header part handled
+                    writeChunk(userResponse, chunk, reqNum);
+                }
+            } catch(e) {
+                console.error("    [%d] [HTTP] [Proxy] [Data] JSON.parse(%j), [ERROR], %j", reqNum, headerString, e);
+            }
+        } else {
+            console.warn("    [%d] [HTTP] [Proxy] [Data] format warn, can't find '}', [Warning]: %d", reqNum, chunkString.length);
+            buf[reqNum] += chunkString;
+        }
+    } else {
+        // Return the data back to Browser
+        writeChunk(userResponse, chunk, reqNum);
+    }
+}
+
+function onProxyServerError( reqNum, path, httpVersion, userResponse, err ) {
+
+    if(buf[reqNum]) {
+        aliveConn--;
+
+        userResponse.writeHead( 500 );
+        userResponse.write( "HTTPs/" + httpVersion + " 500 Connection error\r\n\r\n" );
+        userResponse.end();
+
+        claimMemory(reqNum);
+    }
+
+    if ( errorLevel ) {
+        console.error( '    [%d] [HTTP] [Proxy], [ERROR]: %j, %j, [CONN]: %d', reqNum, err, path, aliveConn );
+    }
+}
+
+function onProxyServerEnd(reqNum, path, userResponse) {
+    aliveConn--;
+
+    if ( info ) {
+        console.log( '    [%d] [HTTP] [Proxy], [END], %j, totalResponseSize = %d, [CONN]: %d', reqNum, path, sizeResponseMap[reqNum], aliveConn );
+    }
+    userResponse.end();
+
+    claimMemory(reqNum);
+}
+
+function onBrowserData(reqNum, path, proxySocket, chunk) {
+    if ( debugging ) {
+        console.info( '  [%d] [HTTP] [Browser] %s, [Data] length=%d', reqNum, path, chunk.length );
+    }
+    proxySocket.write( chunk );
+}
+
+function onBrowserError(reqNum, path, proxySocket, error) {
+    if ( errorLevel ) {
+        console.info( '  [%d] [HTTP] [Browser] [ERROR] %s, %j', reqNum, path, error );
+    }
+    proxySocket.end();
+}
+
+function onBrowserEnd(reqNum, path, proxySocket) {
+    if ( info ) {
+        console.info( '  [%d] [HTTP] [Browser] [END] %s', reqNum, path );
+    }
+
+    httpRequestEnd[reqNum] = true;
+    if( tcpConnectionEstablished[reqNum] ) {
+        proxySocket.write( "!!!END!!!" );
+    }
+}
+
+function onBrowserClose(reqNum, path, proxySocket){
+    if ( info ) {
+        console.info('  [%d] [HTTP] [Browser] [CLOSE] %s', reqNum, path);
+    }
+    httpRequestEnd[reqNum] = true;
+    proxySocket.end();
+}

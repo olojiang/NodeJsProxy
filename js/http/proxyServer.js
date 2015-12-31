@@ -97,9 +97,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
             var header = new Buffer(jsonString, 'base64').toString();
 
             try {
-                //console.info("[Proxy Client], will parse %j", header);
                 var obj = JSON.parse(header);
-                //console.info("[Proxy Client], will handle %j", obj);
                 socket.target = obj;
 
                 leftDataToTargetServer[seqNum]= '';
@@ -119,6 +117,9 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                     //return;
 
                     var extraString = chunkString.substring(ourDataIndex+1);
+                    if(extraString.length>0 || debugging) {
+                        console.info("    [%d] [Proxy Client], [Data] [Extra String] %d", seqNum, extraString.length);
+                    }
 
                     // Connect to target Https server and get things
                     targetSocket[seqNum] = requestHttpsTarget(seqNum, socket, obj.host, obj.port, obj.httpVersion, extraString);
@@ -148,7 +149,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                     // Write some of the body data
                     if(leftDataToTargetServer[seqNum].length>0) {
                         if(detail){
-                            console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, leftDataToTargetServer[seqNum].length);
+                            console.info("    [%d] [Proxy Client], [Data] %d, to Target server", seqNum, leftDataToTargetServer[seqNum].length);
                         }
                         targetSocket[seqNum].write(leftDataToTargetServer[seqNum]);
                     }
@@ -163,7 +164,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                 // - When connection to target is not established, but the data arrived case
                 if(buf[seqNum].length>0) {
                     if(detail){
-                        console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, buf[seqNum].length);
+                        console.info("    [%d] [Proxy Client], [Data] %d, to Target server", seqNum, buf[seqNum].length);
                     }
                     targetSocket[seqNum].write(buf[seqNum]);
                     buf[seqNum] = new Buffer(0);
@@ -179,7 +180,7 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
             }
         } else {
             // There is the content from client, but there is no } within the input, which means the input may be longer, and the algorithm doesn't work.
-            console.error("  [%d] [Proxy Client] [%s], Can't find '}'", seqNum, remoteAddress);
+            console.error("    [%d] [Proxy Client] [%s], Can't find '}'", seqNum, remoteAddress);
             bufferInput[seqNum] += chunkString;
         }
     } else {
@@ -194,22 +195,23 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
             }
         }
 
-        if(targetSocket[seqNum]) {
+        var tSocket = targetSocket[seqNum];
+        if(tSocket) {
             if(chunk.length>0) {
                 if(detail){
-                    console.info("  [%d] [Proxy Client], [Data] %d, to Target server", seqNum, chunk.length);
+                    console.info("    [%d] [Proxy Client], [Data] %d, to Target server", seqNum, chunk.length);
                 }
 
                 if (
-                    (socket.target.type === 'https' && targetSocket[seqNum].isConnected && !targetSocket[seqNum].isClosed) ||
-                    (socket.target.type === 'http' && !targetSocket[seqNum].isClosed)
+                    (socket.target.type === 'https' && tSocket.isConnected && !tSocket.isClosed) ||
+                    (socket.target.type === 'http' && !tSocket.isClosed)
                 ) {
                     // If connected, then send request
-                    targetSocket[seqNum].write(chunk);
+                    tSocket.write(chunk);
                 } else {
                     // If https && not connected, then try to save it, and try to send the data, when socket connected
                     buf[seqNum] = Buffer.concat([buf[seqNum], chunk]);
-                    targetSocket[seqNum].buf = Buffer.concat([buf[seqNum], targetSocket[seqNum].buf||new Buffer(0)]);
+                    tSocket.buf = Buffer.concat([buf[seqNum], tSocket.buf||new Buffer(0)]);
                     buf[seqNum] = new Buffer(0);
                 }
             }
@@ -257,7 +259,7 @@ function onClientSocketConnection(socket){
     clientConn++;
 
     if(info) {
-        console.log('[%d] [Proxy Client] [New connection] [%s] [CONN] %d', seqNum, remoteAddress, clientConn);
+        console.log('  [%d] [Proxy Client] [New connection] [%s] [CONN] %d', seqNum, remoteAddress, clientConn);
     }
 
     targetSocket[seqNum] = null;
