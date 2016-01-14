@@ -343,7 +343,7 @@ function onBrowserError(reqNum, path, proxySocket, error, userRequest) {
     userRequest.isClosed = true;
 
     if ( errorLevel ) {
-        console.info( '  [%d] [HTTP] [Browser] [ERROR] %s, %j', reqNum, path, error );
+        console.info( '  [%d] [HTTP] [Browser] %s [Request Size] %d [ERROR], %j', reqNum, path, sizeRequestMap[reqNum], error );
     }
 
     browserErrors[reqNum] = {
@@ -361,7 +361,7 @@ function onBrowserClose(reqNum, path, proxySocket, userRequest){
     userRequest.isClosed = true;
 
     if ( info ) {
-        console.info('  [%d] [HTTP] [Browser] [CLOSE] %s', reqNum, path);
+        console.info('  [%d] [HTTP] [Browser] [CLOSE] %s [Request Size] %d', reqNum, path, sizeRequestMap[reqNum]);
     }
 
     if( proxySocket.isConnected ) {

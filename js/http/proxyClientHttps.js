@@ -134,7 +134,7 @@ function onProxyServerConnected(reqNum, targetHost, targetPort, httpVersion, bod
         })).toString('base64') + HEADER_SEPARATOR);
 
     // Pass the bodyHead from Browser to Proxy server.
-    if(bodyHead.length!==0) {
+    if(bodyHead.length>0) {
         if ( debugging ) {
             console.log('    [%d] [HTTPs] [Browser] bodyHead, length=%d, %s', reqNum, bodyHead.length, url);
         }
@@ -197,7 +197,8 @@ function onProxyServerError( reqNum, url, httpVersion, socketRequest, proxySocke
 
     proxyErrors[reqNum] = {
         url: url,
-        error: err
+        error: err,
+        time: new Date()
     };
 
     if(!socketRequest.isClosed) {
@@ -237,13 +238,13 @@ function onBrowserData( reqNum, url, proxySocket, chunk ) {
      * - Because, with out it, the request will send the header and extra string within one chunk, but the encoding issue happens in some ENV, so will not be able to receive the chunk on server side correctly, then incorrect data from server to proxy target will result failure.
      * - setTimeout will break the process into 2 pieces
      */
-    setTimeout(function(){
+    setTimeout(function(chunk){
         if(proxySocket.isConnected || proxySocket.isConnected === undefined) {
             browserRequestMap[reqNum] += chunk.length;
 
             proxySocket.write(chunk);
         }
-    }, 500);
+    }.bind(null, chunk), 500);
 }
 
 function onBrowserError( reqNum, url, socketRequest, proxySocket, err ) {
@@ -259,7 +260,8 @@ function onBrowserError( reqNum, url, socketRequest, proxySocket, err ) {
 
     browserErrors[reqNum] = {
         url: url,
-        error: err
+        error: err,
+        time: new Date()
     };
 
     if(proxySocket.isConnected) {
