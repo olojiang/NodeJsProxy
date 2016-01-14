@@ -55,7 +55,7 @@ function writeChunk(userRequest, userResponse, chunk, reqNum) {
     }
 
     // Count actual body size
-    sizeResponseMap[reqNum] += chunk.length + sizeResponseMap[reqNum];
+    sizeResponseMap[reqNum] += chunk.length;
 }
 
 function proxy_client_status(userResponse, httpsStatus) {
