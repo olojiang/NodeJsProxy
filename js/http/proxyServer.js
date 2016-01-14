@@ -8,6 +8,7 @@ var http = require('http');
 var requestHttpTarget = require('./proxyServerHttp').requestHttpTarget;
 var httpServerStatus = require('./proxyServerHttp').httpServerStatus;
 var requestHttpsTarget = require('./proxyServerHttps').requestHttpsTarget;
+var httpsServerStatus = require('./proxyServerHttps').httpsServerStatus;
 var getReqNumFunc = require('../numberUtil').getReqNumFunc();
 
 var errorLevel = true;
@@ -35,7 +36,8 @@ var clientStatus = {
     targetObject: targetObject,
     leftDataToTargetServer: leftDataToTargetServer,
     handledHeadInfo: handledHeadInfo,
-    httpServerStatus: httpServerStatus
+    httpServerStatus: httpServerStatus,
+    httpsServerStatus: httpsServerStatus
 };
 
 var _ = require('underscore');
@@ -49,7 +51,6 @@ function reclaimMemory(seqNum) {
     delete leftDataToTargetServer[seqNum];
     delete targetSocket[seqNum];
     delete targetObject[seqNum];
-
 }
 
 /**
@@ -74,9 +75,7 @@ function closeClientSocket(socket, seqNum, remoteAddress, error) {
     if (targetSocketX) {
 
         if(!targetSocketX.isClosed) {
-            targetSocketX.end();
-
-            //delete socket.targetSocket;
+            targetSocketX.abort();
         }
     }
 

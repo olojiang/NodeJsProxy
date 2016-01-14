@@ -18,8 +18,19 @@ var connNum = 0;
 var dataSize = {};
 var timeout = {};
 
+var reqUrl = {};
+var connectedUrl = {};
+
+var httpsServerStatus = {
+    reqUrl: reqUrl,
+    connectedUrl: connectedUrl,
+    dataSize: dataSize
+};
+
 function claimMemory(seqNum) {
     delete dataSize[seqNum];
+    delete connectedUrl[seqNum];
+    delete reqUrl[seqNum];
 
     if(timeout[seqNum]) {
         clearTimeout(timeout[seqNum]);
@@ -29,6 +40,8 @@ function claimMemory(seqNum) {
 
 function onConnected(seqNum, url, port, socketRequest, proxySocket, extraString) {
     proxySocket.isConnected = true;
+
+    connectedUrl[seqNum] = url+":"+port;
 
     if (info) {
         console.log('    [%d] [HTTPs] [Connected] %s:%s', seqNum, url, port);
@@ -90,7 +103,7 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
         proxySocket.isError = true;
     }
 
-    if(typeof dataSize[seqNum]!=="undefined" && dataSize[seqNum] !== null && dataSize[seqNum] !== "") {
+    if( (typeof dataSize[seqNum]!=="undefined" && dataSize[seqNum] !== null && dataSize[seqNum] !== "") || (error) ) {
 
         if(!socketRequest.isClosed) {
             if(error) {
@@ -118,10 +131,12 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
  * @param url
  * @param port
  * @param httpVersion
+ * @param extraString
  * @returns {exports.Socket}
  */
 function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extraString){
     dataSize[seqNum] = 0;
+    reqUrl[seqNum] = url+":"+port;
 
     // Set up TCP connection to target server
     var proxySocket = new net.Socket();
@@ -170,4 +185,5 @@ function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extra
     return proxySocket;
 }
 
+exports.httpsServerStatus = httpsServerStatus;
 exports.requestHttpsTarget = requestHttpsTarget;
