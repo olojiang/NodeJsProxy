@@ -10,6 +10,7 @@ var fs = require('fs');
 
 var httpHandler = require('./proxyClientHttp').httpHandler;
 var httpsHandler = require('./proxyClientHttps').httpsHandler;
+var httpsStatus = require('./proxyClientHttps').status;
 
 var proxyServerUrl = null;
 var proxyServerPort = null;
@@ -27,7 +28,7 @@ function start(port, remoteUrl, remotePort) {
     proxyServerPort = remotePort;
 
     // Create an http server to capture browser input
-    var server = http.createServer(httpHandler.bind(null, getReqNum, proxyServerUrl, proxyServerPort)).listen(port);
+    var server = http.createServer(httpHandler.bind(null, getReqNum, proxyServerUrl, proxyServerPort, httpsStatus)).listen(port);
 
     // On connection to handle HTTPs
     server.on('connect', httpsHandler.bind(null, getReqNum, proxyServerUrl, proxyServerPort)); // HTTPS connect listener

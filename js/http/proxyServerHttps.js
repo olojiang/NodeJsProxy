@@ -81,8 +81,11 @@ function onData(seqNum, chunk, path, socketRequest, proxySocket) {
 }
 
 function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
-
+    if(!proxySocket.isClosed) {
+        connNum--;
+    }
     proxySocket.isClosed = true;
+
     if(error) {
         proxySocket.isError = true;
     }
@@ -97,8 +100,6 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
             socketRequest.end();
         }
     }
-
-    connNum--;
 
     var log = error?console.error:console.log;
 

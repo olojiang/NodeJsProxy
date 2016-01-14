@@ -11,10 +11,20 @@ var debugging = false;
 var detail = false;
 
 var connNum = 0;
-var dataSize = {};
+var responseDataSize = {};
+var reqUrl = {};
+var connectedUrl = {};
+
+var httpServerStatus = {
+    reqUrl: reqUrl,
+    connectedUrl: connectedUrl,
+    responseDataSize: responseDataSize
+};
 
 function claimMemory(seqNum) {
-    delete dataSize[seqNum];
+    delete responseDataSize[seqNum];
+    delete reqUrl[seqNum];
+    delete connectedUrl[seqNum];
 }
 
 function closeByError(seqNum, path, error, socket, httpRequest) {
@@ -36,7 +46,7 @@ function closeByEnd(seqNum, path, socket, httpRequest) {
     connNum--;
 
     if (info) {
-        console.log('    < [%d] [HTTP] [END] %s, [Output Size], %d, [CONN]: %d', seqNum, path, dataSize[seqNum], connNum);
+        console.log('    < [%d] [HTTP] [END] %s, [Output Size], %d, [CONN]: %d', seqNum, path, responseDataSize[seqNum], connNum);
     }
     if(!socket.isClosed) {
         socket.end(); // Close proxy client
@@ -59,7 +69,8 @@ function requestHttpTarget(seqNum, socket, path, options) {
         console.info("    = [%d] [HTTP] [Request]: %j, [CONN] %d", seqNum, path, connNum);
     }
 
-    dataSize[seqNum] = 0;
+    responseDataSize[seqNum] = 0;
+    reqUrl[seqNum] = path;
 
     // Http request
     var httpRequest = http.request(
@@ -73,6 +84,8 @@ function requestHttpTarget(seqNum, socket, path, options) {
             else if (info) {
                 console.log('    < [%d] [HTTP] [Connected] %s, statusCode: %d', seqNum, path, proxyResponse.statusCode);
             }
+
+            connectedUrl[seqNum] = path;
 
             if(!socket.isClosed) {
                 // Write header and status out first
@@ -89,13 +102,13 @@ function requestHttpTarget(seqNum, socket, path, options) {
                         console.log('    < [%d] [HTTP] [Data] %s, length=%d', seqNum, path, chunk.length);
                     }
 
+                    responseDataSize[seqNum]+= chunk.length;
+
                     if(!socket.isClosed) {
                         socket.write(chunk);
                     } else {
                         httpRequest.abort();
                     }
-
-                    dataSize[seqNum]+= chunk.length;
                 }
             );
 
@@ -119,7 +132,7 @@ function requestHttpTarget(seqNum, socket, path, options) {
     httpRequest.on(
         'error',
         function ( error ) {
-            closeByError(seqNum, path, error, socket);
+            closeByError(seqNum, path, error, socket, httpRequest);
         }
     );
 
@@ -128,4 +141,5 @@ function requestHttpTarget(seqNum, socket, path, options) {
     return httpRequest;
 }
 
+exports.httpServerStatus = httpServerStatus;
 exports.requestHttpTarget = requestHttpTarget;
