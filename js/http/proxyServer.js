@@ -357,11 +357,9 @@ function startTcpServer(port){
     /*
      * Http Status server
      */
-    var statusServerPort = 47777;
+    var statusServerPort = port+1;
     http.createServer(function(request, response){
         var url = request.url;
-
-        //console.info("url:", url);
 
         if (url === '/') {
             respondServerStatus(response);
