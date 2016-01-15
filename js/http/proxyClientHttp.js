@@ -124,6 +124,9 @@ function httpHandler( getReqNum, proxyServerUrl, proxyServerPort, httpsStatus, u
     } else if(opt.path==="/proxy_client_clear_error") {
         proxy_client_clear_error(userResponse, httpsStatus);
         return;
+    } else if(path === "/favicon.ico" && headers.referer.lastIndexOf('/proxy_client_')>-1) {
+        userResponse.end();
+        return;
     }
 
     reqUrl[reqNum] = userRequest.url;

@@ -292,6 +292,7 @@ function closeClientSocket(socket, seqNum, remoteAddress, error) {
                 // https
                 console.info("  [%d] [Proxy Client] [HTTPs.end()], FROM %s, [targetSocket.isClosed] %s", seqNum, remoteAddress, targetSocketX.isClosed);
                 targetSocketX.end();
+                targetSocketX.emit('end'); // Let the connection drop itself
             }
         } else {
             console.info("  [%d] [Proxy Client] [Note], FROM %s, [targetSocket.isClosed] %s", seqNum, remoteAddress, targetSocketX.isClosed);

@@ -8,7 +8,7 @@ There are 2 types of usage from this project:
 
 1. Has node.js installed (With npm).
 2. Install extra node_modules, run under root folder(Both Client and Server):
-> `npm install`
+  * `npm install`
 3. Define 3 Environment Variables:
   * `NP_LOCAL_PORT`, default `27777`
   * `NP_REMOTE_HOST`, no default, it will be your remote server IP address
