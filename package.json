@@ -1,0 +1,29 @@
+{
+  "name": "NodeJsProxy",
+  "version": "0.2.10",
+  "description": "Client Server structure Node.js proxy",
+  "main": "test/testProxyClient.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/olojiang/NodeJsProxy.git"
+  },
+  "keywords": [
+    "proxy",
+    "Node.js"
+  ],
+  "author": "Hunter Ji",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/olojiang/NodeJsProxy/issues"
+  },
+  "homepage": "https://github.com/olojiang/NodeJsProxy",
+  "dependencies": {
+    "underscore": "^1.8.3"
+  }
+}
