@@ -65,7 +65,7 @@ function proxy_client_status(userResponse, httpsStatus) {
     }));
 }
 
-function proxy_client_remove_errors(userResponse, httpsStatus) {
+function proxy_client_clear_error(userResponse, httpsStatus) {
     httpStatus.proxyErrors = {};
     httpStatus.browserErrors = {};
     httpsStatus.proxyErrors = {};
@@ -121,8 +121,8 @@ function httpHandler( getReqNum, proxyServerUrl, proxyServerPort, httpsStatus, u
     if(opt.path==="/proxy_client_status") {
         proxy_client_status(userResponse, httpsStatus);
         return;
-    } else if(opt.path==="/proxy_client_remove_errors") {
-        proxy_client_remove_errors(userResponse, httpsStatus);
+    } else if(opt.path==="/proxy_client_clear_error") {
+        proxy_client_clear_error(userResponse, httpsStatus);
         return;
     }
 

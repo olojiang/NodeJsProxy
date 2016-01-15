@@ -221,8 +221,6 @@ function onProxyServerEnd( reqNum, url, socketRequest, proxySocket ) {
     if(!socketRequest.isClosed) {
         socketRequest.end();
     }
-
-    claimMemory(reqNum);
 }
 
 /*
@@ -268,15 +266,10 @@ function onBrowserError( reqNum, url, socketRequest, proxySocket, err ) {
         proxySocket.end();
     }
 
-    delete browserRequestMap[reqNum];
+    claimMemory(reqNum);
 }
 
 function onBrowserEnd( reqNum, url, socketRequest, proxySocket ) {
-    if(!socketRequest.isClosed) {
-        socketRequest.isClosed = true;
-        browserConn--;
-    }
-
     if ( info ) {
         console.log( '  [%d] [HTTPs] [Browser] [END] %s [SEND SIZE] %d [CONN] %d',
             reqNum, url, browserRequestMap[reqNum], browserConn );
@@ -298,5 +291,5 @@ function onBrowserClose( reqNum, url, socketRequest, proxySocket ) {
         proxySocket.end();
     }
 
-    delete browserRequestMap[reqNum];
+    claimMemory(reqNum);
 }

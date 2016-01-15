@@ -14,17 +14,20 @@ var connNum = 0;
 var responseDataSize = {};
 var reqUrl = {};
 var connectedUrl = {};
+var targetErrors = {};
 
 var httpServerStatus = {
     reqUrl: reqUrl,
     connectedUrl: connectedUrl,
-    responseDataSize: responseDataSize
+    responseDataSize: responseDataSize,
+    targetErrors: targetErrors
 };
 
 function claimMemory(seqNum) {
     delete responseDataSize[seqNum];
     delete reqUrl[seqNum];
     delete connectedUrl[seqNum];
+    delete targetErrors[seqNum];
 }
 
 function closeByError(seqNum, path, error, socket, httpRequest) {
@@ -122,6 +125,14 @@ function requestHttpTarget(seqNum, socket, path, options) {
             proxyResponse.on(
                 'error',
                 function (error) {
+                    targetErrors[seqNum] = {
+                        seqNum: seqNum,
+                        path: path,
+                        time: new Date(),
+                        error: error,
+                        type: 'targetServer'
+                    };
+
                     closeByError(seqNum, path, error, socket, httpRequest);
                 }
             );
@@ -132,6 +143,14 @@ function requestHttpTarget(seqNum, socket, path, options) {
     httpRequest.on(
         'error',
         function ( error ) {
+            targetErrors[seqNum] = {
+                seqNum: seqNum,
+                path: path,
+                time: new Date(),
+                error: error,
+                type: 'connect'
+            };
+
             closeByError(seqNum, path, error, socket, httpRequest);
         }
     );

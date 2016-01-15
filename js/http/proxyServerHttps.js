@@ -12,23 +12,25 @@ var detail = false;
 
 var SOCKET_TIMEOUT = 10*1000;
 var MTALK_URL = "mtalk.google.com:5228"; // This used and re-connect again and again by chrome
-var MTALK_TIMEOUT = 5*60*1000;
+var MTALK_TIMEOUT = 3*60*1000;
 
 var connNum = 0;
-var dataSize = {};
 var timeout = {};
 
+var responseDataSize = {};
 var reqUrl = {};
 var connectedUrl = {};
+var targetErrors = {};
 
 var httpsServerStatus = {
     reqUrl: reqUrl,
     connectedUrl: connectedUrl,
-    dataSize: dataSize
+    targetErrors: targetErrors,
+    responseDataSize: responseDataSize
 };
 
 function claimMemory(seqNum) {
-    delete dataSize[seqNum];
+    delete responseDataSize[seqNum];
     delete connectedUrl[seqNum];
     delete reqUrl[seqNum];
 
@@ -69,7 +71,7 @@ function onData(seqNum, chunk, path, socketRequest, proxySocket) {
         console.log('    < [%d] [HTTPs] [Data] %d, %s', seqNum, chunk.length, path);
     }
 
-    dataSize[seqNum] += chunk.length;
+    responseDataSize[seqNum] += chunk.length;
 
     // Return the data back to caller, only when it's not closed
     if (!socketRequest.isClosed) {
@@ -103,11 +105,11 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
         proxySocket.isError = true;
     }
 
-    if( (typeof dataSize[seqNum]!=="undefined" && dataSize[seqNum] !== null && dataSize[seqNum] !== "") || (error) ) {
+    if( (typeof responseDataSize[seqNum]!=="undefined" && responseDataSize[seqNum] !== null && responseDataSize[seqNum] !== "") || (error) ) {
 
-        if(!socketRequest.isClosed) {
-            if(error) {
-                socketRequest.write( "500 Connection error\r\n" );
+        if (!socketRequest.isClosed) {
+            if (error) {
+                socketRequest.write("500 Connection error\r\n");
             }
 
             socketRequest.end();
@@ -117,7 +119,7 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
     var log = error?console.error:console.log;
 
     if (info) {
-        log('    < [%d] [HTTPs] '+(error?"[ERROR]":"[END]")+', %s, [Output Size], %d, [CONN]: %d' + (error?", Error:":""), seqNum, path, dataSize[seqNum], connNum, (error?error:""));
+        log('    < [%d] [HTTPs] '+(error?"[ERROR]":"[END]")+', %s, [Output Size], %d, [CONN]: %d' + (error?", Error:":""), seqNum, path, responseDataSize[seqNum], connNum, (error?error:""));
     }
 
     claimMemory(seqNum);
@@ -134,9 +136,9 @@ function closeConnection(seqNum, path, socketRequest, proxySocket, error) {
  * @param extraString
  * @returns {exports.Socket}
  */
-function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extraString){
-    dataSize[seqNum] = 0;
-    reqUrl[seqNum] = url+":"+port;
+function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extraString) {
+    responseDataSize[seqNum] = 0;
+    reqUrl[seqNum] = url + ":" + port;
 
     // Set up TCP connection to target server
     var proxySocket = new net.Socket();
@@ -168,6 +170,12 @@ function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extra
     proxySocket.on(
         'error',
         function ( err ) {
+            targetErrors[seqNum] = {
+                seqNum: seqNum,
+                path: path,
+                time: new Date(),
+                error: err
+            };
             closeConnection(seqNum, path, socketRequest, proxySocket, err);
         }
     );
