@@ -22,6 +22,7 @@ There are 2 types of usage from this project:
 ##### Point any other application, like browser(Chrome: [SwitchyOmega](https://chrome.google.com/webstore/detail/proxy-switchyomega/padekgcemlokbadohgkifijomclgjgif?hl=en)), etc to use local proxy client.
 
 #### Test
-I test the proxy by deploying the proxy server under centOS 6.x(Out of china)
+I tested the proxy by deploying the proxy server under centOS 6.x(Out of China)<br/>
+I tested the proxy by deploying the proxy server under centOS 7.x(Out of China)
 
-And deploy the proxy client under windows 7, window 8.x, it works fine to access Youtube, Facebook, Twitter from China.
+I deployed the proxy client under windows 7, window 8.x, it works fine to access Google, Google Mail, Google Image, Youtube, Facebook, Twitter, etc from China.
