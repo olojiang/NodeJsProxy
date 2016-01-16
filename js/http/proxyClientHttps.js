@@ -195,11 +195,13 @@ function onProxyServerError( reqNum, url, httpVersion, socketRequest, proxySocke
         console.error( '    [%d] [HTTPs] [Proxy] ERR: %s, %s, [CONN]: %d', reqNum, err, url, proxyConn );
     }
 
-    proxyErrors[reqNum] = {
-        url: url,
-        error: err,
-        time: new Date()
-    };
+    if(url !== "mtalk.google.com:5228" && err.code !== "ECONNRESET") {
+        proxyErrors[reqNum] = {
+            url: url,
+            error: err,
+            time: new Date()
+        };
+    }
 
     if(!socketRequest.isClosed) {
         socketRequest.write( "HTTPs/" + httpVersion + " 500 Connection error\r\n\r\n" );
