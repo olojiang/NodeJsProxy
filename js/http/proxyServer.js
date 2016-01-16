@@ -112,10 +112,10 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
             // Change status
             handledHeadInfo[seqNum] = true;
 
-            var jsonString = clientRequestHeaderBuffer[seqNum] + chunkString.substring(0, ourDataIndex);
+            var headerString = clientRequestHeaderBuffer[seqNum] + chunkString.substring(0, ourDataIndex);
 
             // Use base64 to decode the header part of the request.
-            var header = new Buffer(jsonString, 'base64').toString();
+            var header = new Buffer(headerString, 'base64').toString();
 
             try {
                 var obj = JSON.parse(header);
@@ -125,7 +125,11 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                 targetObject[seqNum] = _.clone(obj);
                 delete targetObject[seqNum].options;
 
-                leftDataToTargetServer[seqNum]= '';
+                var extraString = chunkString.substring(ourDataIndex+HEADER_SEPARATOR.length);
+                if(extraString.length>0 || debugging) {
+                    console.info("    [%d] [Proxy Client], [Data] [Extra String] %d", seqNum, extraString.length);
+                }
+                leftDataToTargetServer[seqNum] = extraString;
 
                 if(obj.type === "https") {
                     // Get target
@@ -138,13 +142,6 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                      }
                      */
                     connectionHandled.https++;
-
-                    var extraString = chunkString.substring(ourDataIndex+1);
-                    if(extraString.length>0 || debugging) {
-                        console.info("    [%d] [Proxy Client], [Data] [Extra String] %d", seqNum, extraString.length);
-                    }
-
-                    leftDataToTargetServer[seqNum]=extraString.length;
 
                     // Connect to target Https server and get things
                     targetSocket[seqNum] = requestHttpsTarget(seqNum, socket, obj.host, obj.port, obj.httpVersion, extraString);
@@ -159,8 +156,6 @@ function onClientSocketData(seqNum, remoteAddress, socket, chunk){
                      }
                      */
                     connectionHandled.http++;
-
-                    leftDataToTargetServer[seqNum] = chunkString.substring(ourDataIndex+1);
 
                     // Connect to target Http server and get things
                     // Send request to target server

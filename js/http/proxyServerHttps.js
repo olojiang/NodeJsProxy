@@ -170,12 +170,15 @@ function requestHttpsTarget(seqNum, socketRequest, url, port, httpVersion, extra
     proxySocket.on(
         'error',
         function ( err ) {
-            targetErrors[seqNum] = {
-                seqNum: seqNum,
-                path: path,
-                time: new Date(),
-                error: err
-            };
+            if(path !== "mtalk.google.com:5228" && err.code !== "ECONNRESET") {
+                targetErrors[seqNum] = {
+                    seqNum: seqNum,
+                    path: path,
+                    time: new Date(),
+                    error: err
+                };
+            }
+
             closeConnection(seqNum, path, socketRequest, proxySocket, err);
         }
     );
